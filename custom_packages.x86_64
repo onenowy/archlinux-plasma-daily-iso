@@ -1,0 +1,46 @@
+# --- Desktop Environment (KDE Plasma & Wayland) ---
+plasma-meta
+sddm
+egl-wayland
+
+# --- Network & Bluetooth (Not in releng) ---
+networkmanager
+bluez
+bluez-utils
+
+# --- Essential GUI Utilities ---
+konsole
+dolphin
+kate
+ark
+spectacle
+gwenview
+okular
+kcalc
+partitionmanager
+plasma-systemmonitor
+
+# --- Archive Backends (For Ark) ---
+p7zip
+unrar
+
+# --- Dolphin Plugins ---
+ffmpegthumbs
+
+# --- Internet ---
+firefox
+
+# --- Audio Backend (PipeWire) ---
+wireplumber
+pipewire
+pipewire-alsa
+pipewire-pulse
+
+# --- Fonts (Korean Support) ---
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+ttf-liberation
+
+# --- Extra Tools ---
+git
