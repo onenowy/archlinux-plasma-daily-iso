@@ -1,20 +1,14 @@
-name: Daily Arch ISO Build & Release
+name: Manual Arch ISO Build
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Runs every day at midnight (UTC)
-  workflow_dispatch:      # Allows manual trigger
-
-permissions:
-  contents: write
+  workflow_dispatch:      # Allows manual trigger via the 'Actions' tab
 
 jobs:
-  # [Job 1] Build ISO (Arch Linux Environment)
   build_iso:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-      options: --privileged
+      options: --privileged # Privileged mode is required for mounting filesystems during build
     
     steps:
       - name: Checkout repository
@@ -27,11 +21,11 @@ jobs:
 
       - name: Configure ISO Profile
         run: |
-          # 1. Copy default releng profile
+          # 1. Copy default releng profile (Base system)
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
           
-          # 2. Append Custom Packages from external file
-          # Read 'custom_packages.x86_64' from the repository and append to the ISO config
+          # 2. Append Custom Packages
+          # Read 'custom_packages.x86_64' from the repository root and append to the ISO package list
           if [ -f "custom_packages.x86_64" ]; then
             cat custom_packages.x86_64 >> /tmp/archlive/packages.x86_64
             echo "Custom packages appended successfully."
@@ -48,18 +42,18 @@ jobs:
           mkdir -p "$SYSTEMD_DIR"
           mkdir -p "$MULTI_USER_DIR"
 
-          # [3-1] Enable Services (Symlinks)
-          
-          # SDDM (Display Manager)
+          # [3-1] Enable Services (Create Symlinks)
+          # SDDM (Display Manager) - Required for graphical login
           ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
           
-          # NetworkManager
+          # NetworkManager - Required for internet connectivity
           ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
           
-          # Bluetooth
+          # Bluetooth - Required for Bluetooth devices
           ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
           # [3-2] Configure SDDM Auto-login
+          # This enables booting directly into the Plasma session without a password
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
           [Autologin]
@@ -67,55 +61,17 @@ jobs:
           Session=plasma
           EOF
           
+          # Set correct permissions
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
       - name: Build ISO
         run: |
+          # Build the ISO using mkarchiso
           mkarchiso -v -w /tmp/archiso-work -o ./out /tmp/archlive
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: built-iso
+          name: Arch-Plasma-Wayland-ISO
           path: out/*.iso
-          retention-days: 1
-
-  # [Job 2] Update Release
-  update_release:
-    needs: build_iso
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Download ISO Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: built-iso
-          path: ./iso-files
-
-      - name: Delete Old Release & Tag
-        uses: dev-drprasad/delete-tag-and-release@v1.1
-        with:
-          delete_release: true 
-          tag_name: rolling
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create New Release & Upload ISO
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Daily Arch Linux Plasma (Wayland)
-          tag_name: rolling
-          body: |
-            ### 🚀 Daily Build
-            Automatic daily build of Arch Linux with KDE Plasma (Wayland).
-            
-            **Features:**
-            - **Desktop:** KDE Plasma 6 (Wayland)
-            - **Browser:** Firefox
-            - **Apps:** Kate, Ark, PartitionManager, etc.
-            - **System:** PipeWire, Bluetooth, NetworkManager
-            - **Login:** Auto-login enabled (User: `arch`)
-            
-            *Built on: ${{ github.event.repository.updated_at }}*
-          files: ./iso-files/*.iso
-          prerelease: false
-          make_latest: true
+          retention-days: 3 # Keep the file for 3 days
