@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-      options: --privileged # Privileged mode is required for mounting filesystems
+      options: --privileged
     
     steps:
       - name: Checkout repository
@@ -21,7 +21,7 @@ jobs:
 
       - name: Configure ISO Profile
         run: |
-          # 1. Copy default releng profile (Base system)
+          # 1. Copy default releng profile
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
           
           # 2. Append Custom Packages
@@ -41,30 +41,34 @@ jobs:
           mkdir -p "$SYSTEMD_DIR"
           mkdir -p "$MULTI_USER_DIR"
 
-          # [3-1] Enable Services (Symlinks)
+          # [3-1] Enable Services
           ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
           ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
           ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
           # ==================================================================
           # [CRITICAL FIX] Manually Create User 'arch'
-          # This ensures the user exists BEFORE SDDM starts.
           # ==================================================================
           
-          # 1. Create User Entry in /etc/passwd (User: arch, UID: 1000, Shell: /bin/zsh)
-          # Explicitly creating this allows SDDM to find the user immediately.
+          # Create User/Shadow/Group entries manually so SDDM sees them immediately
+          # Check if files exist before appending to avoid errors, or create them
+          [ ! -f "$AIROOTFS_DIR/etc/passwd" ] && touch "$AIROOTFS_DIR/etc/passwd"
+          [ ! -f "$AIROOTFS_DIR/etc/shadow" ] && touch "$AIROOTFS_DIR/etc/shadow"
+          [ ! -f "$AIROOTFS_DIR/etc/group" ] && touch "$AIROOTFS_DIR/etc/group"
+
           echo "arch:x:1000:1000::/home/arch:/bin/zsh" >> "$AIROOTFS_DIR/etc/passwd"
-
-          # 2. Create Shadow Entry (No password set)
           echo "arch:::0:99999:7:::" >> "$AIROOTFS_DIR/etc/shadow"
-
-          # 3. Create Group Entry
           echo "arch:x:1000:" >> "$AIROOTFS_DIR/etc/group"
+          
+          # Add arch to wheel group. Note: releng profile usually has /etc/group
+          # If wheel doesn't exist in the copied profile, create it, otherwise append.
+          if grep -q "^wheel:" "$AIROOTFS_DIR/etc/group"; then
+             sed -i 's/^wheel:x:998:$/wheel:x:998:arch/' "$AIROOTFS_DIR/etc/group"
+          else
+             echo "wheel:x:998:arch" >> "$AIROOTFS_DIR/etc/group"
+          fi
 
-          # 4. Add 'arch' to 'wheel' group (Append user to existing wheel line)
-          sed -i 's/^wheel:x:998:$/wheel:x:998:arch/' "$AIROOTFS_DIR/etc/group"
-
-          # 5. Enable Passwordless Sudo for wheel group
+          # Enable Passwordless Sudo
           mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
           echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
           chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
@@ -83,14 +87,21 @@ jobs:
           EOF
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
-          # [3-3] Fix Home Directory Permissions
-          # Without this, Plasma cannot write config files and crashes back to login screen.
+          # [3-3] Fix Home Directory
           mkdir -p "$AIROOTFS_DIR/home/arch"
           chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
           
-          # [3-4] Fix PAM to allow passwordless login
-          # Force SDDM to accept empty password login by using pam_permit.so
-          sed -i 's/^auth.*include.*system-login/auth sufficient pam_permit.so/' "$AIROOTFS_DIR/etc/pam.d/sddm"
+          # [3-4] Fix PAM (Create file instead of sed)
+          # SDDM package isn't installed yet, so the file doesn't exist.
+          # We create a custom PAM config that allows passwordless login.
+          mkdir -p "$AIROOTFS_DIR/etc/pam.d"
+          cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
+          #%PAM-1.0
+          auth     sufficient  pam_permit.so
+          account  include     system-login
+          password include     system-login
+          session  include     system-login
+          EOF
 
       - name: Build ISO
         run: |
