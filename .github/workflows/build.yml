@@ -27,7 +27,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 1. Setup Environment
-          pacman -Syu --noconfirm git sed github-cli
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git sed github-cli
           git config --global --add safe.directory '*'
 
           if [ ! -f "package_list.x86_64" ]; then
@@ -69,7 +70,6 @@ jobs:
   # ==================================================================
   build_iso:
     needs: check_updates
-    # Run if updates are detected OR manually triggered
     if: needs.check_updates.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
@@ -89,7 +89,8 @@ jobs:
       - name: Install Build Tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm archiso make git sed
+          # Added github-cli to prevent "gh: command not found" error
+          pacman -S --noconfirm archiso make git sed github-cli
 
       - name: Setup 'Diet' Profile & Optimization
         run: |
@@ -106,9 +107,9 @@ jobs:
           fi
 
           # 3. [DIET] Remove Docs & Locales via pacman.conf
-          # This blocks installation of man pages, docs, and non-EN locales to reduce size
-          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en*' /etc/pacman.conf
-          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en*' /tmp/archlive/pacman.conf
+          # This blocks installation of man pages, docs, and non-EN/KO locales to reduce size
+          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /etc/pacman.conf
+          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /tmp/archlive/pacman.conf
 
           # 4. [COMPRESSION] Maximize XZ Compression
           sed -i "s/airootfs_image_tool_options=('-comp' 'zstd'.*)/airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')/" /tmp/archlive/profiledef.sh
@@ -116,7 +117,7 @@ jobs:
           # 5. Desktop Configuration
           AIROOTFS_DIR="/tmp/archlive/airootfs"
           
-          # Copy SDDM Autologin config from repository
+          # Copy SDDM Autologin config
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           if [ -f "configs/autologin.conf" ]; then
              echo "Applying custom autologin config..."
@@ -143,21 +144,22 @@ jobs:
           echo "Managing release..."
           git config --global --add safe.directory '*'
           
-          # Check and delete previous release
+          # 1. Delete previous release if exists
           if gh release view daily-build --repo ${{ github.repository }} > /dev/null 2>&1; then
              gh release delete daily-build --yes --cleanup-tag --repo ${{ github.repository }}
           fi
           
-          # Check built ISO size
+          # 2. Check Size (Log only)
           cd out
           ISO_FILE=$(ls *.iso | head -n 1)
           FILE_SIZE=$(stat -c%s "$ISO_FILE")
           echo "Final ISO Size: $(($FILE_SIZE / 1024 / 1024)) MB"
+          cd ..
           
-          # Upload ISO + Hash
-          gh release create daily-build ./*.iso ../out_hash/package.hash \
+          # 3. Upload ISO + Hash directly (No splitting)
+          gh release create daily-build ./out/*.iso ./out_hash/package.hash \
             --repo ${{ github.repository }} \
             --title "Arch Plasma Diet Build" \
-            --notes "Optimized ~1GB Build. No docs/man-pages. Minimal Plasma." \
+            --notes "Optimized ~1GB Build. Minimal Plasma + Tumbleweed Utils." \
             --latest \
             --target ${{ github.sha }}
