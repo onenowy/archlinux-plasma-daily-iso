@@ -36,7 +36,7 @@ jobs:
           # 1. Configure Git safe directory
           git config --global --add safe.directory '*'
 
-          # 2. Sanitize package list (remove comments and whitespace)
+          # 2. Sanitize package list
           if [ -f "package_list.x86_64" ]; then
             sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > clean_package_list.txt
           else
@@ -44,22 +44,26 @@ jobs:
             exit 1
           fi
 
-          # 3. Resolve current package URLs and generate hash
-          # 'pacman -Sp' lists download URLs which include version numbers.
-          # Any change in version will result in a different SHA256 hash.
+          # 3. Resolve current package versions (Mirror Independent)
+          # [FIX] Use sed to strip the URL path, keeping only the filename.
+          # Example: 'https://mirror.../linux-6.x.zst' -> 'linux-6.x.zst'
           echo "Resolving current package versions..."
-          pacman -Sp --noconfirm - < clean_package_list.txt | sort | sha256sum | awk '{print $1}' > current_packages.hash
+          
+          pacman -Sp --noconfirm - < clean_package_list.txt \
+            | sed 's|.*/||' \
+            | sort \
+            | sha256sum \
+            | awk '{print $1}' > current_packages.hash
           
           echo "Current Hash: $(cat current_packages.hash)"
 
-          # 4. Download previous hash for comparison
+          # 4. Download previous hash
           echo "Downloading previous hash..."
-          # If download fails (e.g., first run), create an empty file to force a build.
           gh release download daily-build -p package.hash --repo ${{ github.repository }} -O old_packages.hash || touch old_packages.hash
           
           echo "Old Hash: $(cat old_packages.hash)"
 
-          # 5. Compare hashes and determine if build is needed
+          # 5. Compare
           if cmp -s current_packages.hash old_packages.hash; then
             echo "::notice::No package updates found. Skipping build."
             echo "should_build=false" >> $GITHUB_OUTPUT
@@ -68,7 +72,7 @@ jobs:
             echo "should_build=true" >> $GITHUB_OUTPUT
           fi
           
-          # Prepare hash artifact for the build job
+          # Artifact setup
           mkdir -p hash_artifact
           cp current_packages.hash hash_artifact/package.hash
 
