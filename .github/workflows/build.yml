@@ -1,13 +1,13 @@
-name: Arch Plasma ISO Build & Release (Smart Update)
+name: Arch Plasma ISO (Diet Edition)
 
 on:
-  workflow_dispatch:      # Manual trigger only
-  
+  workflow_dispatch:      # Manual trigger
   schedule:
+    # Run daily at 00:00 UTC
     - cron: '0 0 * * *'
 
 permissions:
-  contents: write  # Required for managing Releases
+  contents: write
 
 jobs:
   # ==================================================================
@@ -15,87 +15,62 @@ jobs:
   # ==================================================================
   check_updates:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
+    container: archlinux:latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Utilities
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm git sed github-cli
-
-      - name: Check Package Versions
+      - uses: actions/checkout@v4
+      
+      - name: Check Updates Logic
         id: check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Configure Git safe directory
+          # 1. Setup Environment
+          pacman -Syu --noconfirm git sed github-cli
           git config --global --add safe.directory '*'
 
-          # 2. Sanitize package list
-          if [ -f "package_list.x86_64" ]; then
-            sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > clean_package_list.txt
-          else
+          if [ ! -f "package_list.x86_64" ]; then
             echo "Error: package_list.x86_64 not found!"
             exit 1
           fi
-
-          # 3. Resolve current package versions (Mirror Independent)
-          # Use sed to strip the URL path, keeping only the filename to avoid hash changes on mirror switch.
-          echo "Resolving current package versions..."
-          pacman -Sp --noconfirm - < clean_package_list.txt \
-            | sed 's|.*/||' \
-            | sort \
-            | sha256sum \
-            | awk '{print $1}' > current_packages.hash
           
-          echo "Current Hash: $(cat current_packages.hash)"
-
-          # 4. Download previous hash for comparison
-          echo "Downloading previous hash..."
-          # Check if the release exists before trying to download
-          if gh release view daily-build --repo ${{ github.repository }} > /dev/null 2>&1; then
-             gh release download daily-build -p package.hash --repo ${{ github.repository }} -O old_packages.hash || touch old_packages.hash
+          # 2. Compare Hash (Current vs Release)
+          # Clean the package list (remove comments and empty lines)
+          sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > clean_list.txt
+          
+          # Resolve package versions and generate hash (Mirror independent)
+          pacman -Sp --noconfirm - < clean_list.txt | sed 's|.*/||' | sort | sha256sum | awk '{print $1}' > current.hash
+          
+          # Download previous hash
+          gh release download daily-build -p package.hash -R ${{ github.repository }} -O old.hash || touch old.hash
+          
+          # Compare
+          if cmp -s current.hash old.hash; then
+             echo "::notice::No updates found."
+             echo "should_build=false" >> $GITHUB_OUTPUT
           else
-             echo "No previous release found. Creating empty hash to force build."
-             touch old_packages.hash
+             echo "::notice::Updates detected."
+             echo "should_build=true" >> $GITHUB_OUTPUT
           fi
           
-          echo "Old Hash: $(cat old_packages.hash)"
-
-          # 5. Compare hashes
-          if cmp -s current_packages.hash old_packages.hash; then
-            echo "::notice::No package updates found. Skipping build."
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          else
-            echo "::notice::Updates detected! Triggering build."
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          fi
-          
-          # Prepare hash artifact
+          # Prepare artifact
           mkdir -p hash_artifact
-          cp current_packages.hash hash_artifact/package.hash
+          cp current.hash hash_artifact/package.hash
 
-      - name: Upload Hash Artifact
+      - uses: actions/upload-artifact@v4
         if: steps.check.outputs.should_build == 'true'
-        uses: actions/upload-artifact@v4
         with:
           name: package-hash
           path: hash_artifact/package.hash
 
   # ==================================================================
-  # JOB 2: Build & Release ISO
+  # JOB 2: Build ISO
   # ==================================================================
   build_iso:
     needs: check_updates
-    # Run only if updates are detected OR manually triggered
+    # Run if updates are detected OR manually triggered
     if: needs.check_updates.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
-    
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -114,109 +89,75 @@ jobs:
       - name: Install Build Tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm archiso make git sed github-cli
-          git config --global --add safe.directory '*'
+          pacman -S --noconfirm archiso make git sed
 
-      - name: Configure Clean Profile
+      - name: Setup 'Diet' Profile & Optimization
         run: |
-          # Copy releng skeleton
+          # 1. Copy Releng Profile
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
-          
-          # [STEP 1] Overwrite Package List
+
+          # 2. [CORE] Apply Custom Package List
           if [ -f "package_list.x86_64" ]; then
-            echo "Overwriting package list..."
-            sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > /tmp/archlive/packages.x86_64
+             echo "Applying custom package list from repository..."
+             sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > /tmp/archlive/packages.x86_64
           else
-            echo "Error: package_list.x86_64 not found!"
-            exit 1
+             echo "::error::package_list.x86_64 file not found!"
+             exit 1
           fi
 
-          # [STEP 1.5] Maximize Compression (XZ)
+          # 3. [DIET] Remove Docs & Locales via pacman.conf
+          # This blocks installation of man pages, docs, and non-EN/KO locales to reduce size
+          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /etc/pacman.conf
+          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /tmp/archlive/pacman.conf
+
+          # 4. [COMPRESSION] Maximize XZ Compression
           sed -i "s/airootfs_image_tool_options=('-comp' 'zstd'.*)/airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')/" /tmp/archlive/profiledef.sh
 
-          # [STEP 2] Reset Services & Cleanup Residue
+          # 5. Desktop Configuration
           AIROOTFS_DIR="/tmp/archlive/airootfs"
-          SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
-          MULTI_USER_DIR="$SYSTEMD_DIR/multi-user.target.wants"
-
-          echo "Wiping default service symlinks..."
-          rm -rf "$MULTI_USER_DIR"/*
-          rm -rf "$SYSTEMD_DIR"/getty.target.wants/*
-          rm -f "$AIROOTFS_DIR/root/install.txt"
           
-          # [STEP 3] Safe User & Permission Setup
-          mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
-          cat <<EOF > "$AIROOTFS_DIR/usr/lib/sysusers.d/arch-groups.conf"
-          u arch 1000 "Arch Linux Live User" /home/arch /bin/bash
-          m arch input
-          m arch video
-          m arch render
-          m arch audio
-          m arch optical
-          m arch storage
-          m arch wheel
-          m arch rfkill
-          EOF
-
-          mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
-          echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
-          chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
-
-          # [STEP 4] Enable Essential Services
-          ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
-          ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
-          ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
-
-          # [STEP 5] Desktop Configuration
+          # Copy SDDM Autologin config from repository
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
-          cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
-          [Autologin]
-          User=arch
-          Session=plasma.desktop
-          Relogin=false
-          [General]
-          DisplayServer=wayland
-          EOF
-          chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
-
-          mkdir -p "$AIROOTFS_DIR/home/arch"
-          chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
+          if [ -f "configs/autologin.conf" ]; then
+             echo "Applying custom autologin config..."
+             cp configs/autologin.conf "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
+             chmod 644 "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
+          else
+             echo "::warning::configs/autologin.conf not found! Using default."
+          fi
           
-          mkdir -p "$AIROOTFS_DIR/etc/pam.d"
-          cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
-          #%PAM-1.0
-          auth      sufficient  pam_permit.so
-          account   include     system-login
-          password  include     system-login
-          session   include     system-login
-          EOF
+          # Enable Essential Services
+          SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
+          mkdir -p "$SYSTEMD_DIR/multi-user.target.wants"
+          ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
+          ln -sf /usr/lib/systemd/system/NetworkManager.service "$SYSTEMD_DIR/multi-user.target.wants/NetworkManager.service"
 
       - name: Build ISO
         run: |
           mkarchiso -v -w /tmp/archiso-work -o ./out /tmp/archlive
 
-      # ==================================================================
-      # [Release Step] Using GitHub CLI
-      # ==================================================================
-      - name: Create Release and Upload
+      - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Managing release..."
           git config --global --add safe.directory '*'
-
-          # 1. Check if release exists before deleting (Prevents 422 error on first run)
+          
+          # Check and delete previous release
           if gh release view daily-build --repo ${{ github.repository }} > /dev/null 2>&1; then
-             echo "Previous release found. Deleting..."
              gh release delete daily-build --yes --cleanup-tag --repo ${{ github.repository }}
-          else
-             echo "No previous release found. Creating a new one..."
           fi
           
-          # 2. Upload ISO AND the hash file
-          gh release create daily-build ./out/*.iso ./out_hash/package.hash \
+          # Check built ISO size
+          cd out
+          ISO_FILE=$(ls *.iso | head -n 1)
+          FILE_SIZE=$(stat -c%s "$ISO_FILE")
+          echo "Final ISO Size: $(($FILE_SIZE / 1024 / 1024)) MB"
+          
+          # Upload ISO + Hash
+          gh release create daily-build ./*.iso ../out_hash/package.hash \
             --repo ${{ github.repository }} \
-            --title "Arch Linux Plasma (Wayland) Daily Build" \
-            --notes "Automated build. Compressed with XZ. Contains minimal Plasma, Firefox, and essential utilities." \
+            --title "Arch Plasma Diet Build" \
+            --notes "Optimized ~1GB Build. No docs/man-pages. Minimal Plasma." \
             --latest \
             --target ${{ github.sha }}

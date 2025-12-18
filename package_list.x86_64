@@ -6,7 +6,6 @@ syslinux             # Required for ISO generation
 grub
 efibootmgr
 dosfstools
-mtools
 mkinitcpio
 mkinitcpio-archiso
 arch-install-scripts
@@ -17,7 +16,6 @@ bash-completion
 intel-ucode
 amd-ucode
 sof-firmware
-alsa-firmware
 
 # --- [Graphics & Input Drivers] ---
 mesa
@@ -36,6 +34,7 @@ kscreen
 breeze
 breeze-gtk
 kde-gtk-config
+xdg-user-dirs
 
 # --- [Network & Bluetooth GUI] ---
 plasma-nm
@@ -74,7 +73,6 @@ xfsprogs
 nano
 unrar
 p7zip
-ffmpegthumbs
 archinstall          # [ADDED] Official Easy Installer
 
 # --- [Fonts] ---
