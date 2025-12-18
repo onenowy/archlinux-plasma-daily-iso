@@ -26,38 +26,36 @@ NO_EXTRACT_RULE="NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* u
 sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" /etc/pacman.conf
 sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" "$WORK_DIR/pacman.conf"
 
-# 4. [COMPRESSION] Maximize XZ Compression (RootFS)
-echo "-> Setting XZ compression for RootFS..."
-sed -i "s/airootfs_image_tool_options=('-comp' 'zstd'.*)/airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')/" "$WORK_DIR/profiledef.sh"
+# 4. [INITRAMFS] Optimize Size (Target: archiso.conf)
+# Remove 'kms' (Graphics drivers) and PXE network hooks to save space.
+echo "-> Optimizing Initramfs (archiso.conf)..."
 
-# 5. [INITRAMFS] Optimize Size (KMS removal & XZ compression)
-echo "-> Optimizing Initramfs..."
-MKINITCPIO_CONF=$(find "$WORK_DIR" -name "mkinitcpio.conf" -type f | head -n 1)
+CONF_FILE=$(find "$WORK_DIR" -name "archiso.conf" | head -n 1)
 
-if [ -n "$MKINITCPIO_CONF" ]; then
-    echo "   Found config at: $MKINITCPIO_CONF"
+if [ -n "$CONF_FILE" ]; then
+    echo "   Processing config: $CONF_FILE"
     
-    # Remove KMS hook
-    sed -i 's/\<kms\>//g' "$MKINITCPIO_CONF"
+    # Updated removal list based on latest archiso (v70+) defaults
+    # 'pcmcia' and 'archiso_shutdown' are already gone in upstream.
+    HOOKS_TO_REMOVE=(
+        "kms" 
+        "archiso_pxe_common" 
+        "archiso_pxe_nbd" 
+        "archiso_pxe_http" 
+        "archiso_pxe_nfs"
+    )
     
-    # Force XZ Compression
-    if grep -q "^COMPRESSION=" "$MKINITCPIO_CONF"; then
-        sed -i 's/^COMPRESSION=.*/COMPRESSION="xz"/' "$MKINITCPIO_CONF"
-    else
-        echo 'COMPRESSION="xz"' >> "$MKINITCPIO_CONF"
-    fi
-    
-    # Set Compression Options
-    if grep -q "^COMPRESSION_OPTIONS=" "$MKINITCPIO_CONF"; then
-        sed -i "s/^COMPRESSION_OPTIONS=.*/COMPRESSION_OPTIONS=('-9e')/" "$MKINITCPIO_CONF"
-    else
-        echo "COMPRESSION_OPTIONS=('-9e')" >> "$MKINITCPIO_CONF"
-    fi
+    for HOOK in "${HOOKS_TO_REMOVE[@]}"; do
+        if grep -q "\<$HOOK\>" "$CONF_FILE"; then
+            echo "      - Removing '$HOOK' hook..."
+            sed -i "s/\<$HOOK\>//g" "$CONF_FILE"
+        fi
+    done
 else
-    echo "::warning::mkinitcpio.conf not found! Skipping initramfs optimization."
+    echo "::warning::archiso.conf not found! Initramfs optimization skipped."
 fi
 
-# 6. Desktop Configuration
+# 5. Desktop Configuration
 echo "-> Configuring Desktop Environment..."
 AIROOTFS_DIR="$WORK_DIR/airootfs"
 
