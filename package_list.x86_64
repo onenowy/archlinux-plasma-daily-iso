@@ -1,7 +1,6 @@
 # --- [Boot & Base System] ---
 base
 linux
-linux-firmware
 syslinux             # Required for ISO generation
 grub
 efibootmgr
@@ -15,6 +14,15 @@ bash-completion
 # --- [Hardware Support] ---
 intel-ucode
 amd-ucode
+linux-firmware-whence    
+linux-firmware-intel     # Intel GPU & Wi-Fi/BT
+linux-firmware-amdgpu    # AMD Radeon Modern GPU
+linux-firmware-radeon    # AMD Radeon Legacy GPU
+linux-firmware-nvidia    
+linux-firmware-realtek   # Realtek Ethernet/Wi-Fi/BT
+linux-firmware-atheros   # Qualcomm Atheros Wi-Fi/BT
+linux-firmware-broadcom
+linux-firmware-mediatek
 sof-firmware
 
 # --- [Graphics & Input Drivers] ---
