@@ -16,19 +16,18 @@ jobs:
 
       - name: Install Build Tools & Fix Mirrors
         run: |
-          # 1. Update Keyring & Database first to avoid signature errors
+          # 1. Update Keyring first
           pacman -Sy --noconfirm archlinux-keyring
           
-          # 2. Install Archiso and Reflector (Mirror tool)
+          # 2. Install Archiso and Reflector
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git reflector
 
-          # 3. [FIX] Update Mirrorlist to fix 'target not found' errors
-          # GitHub Runners are in the US/Azure, so we need fresh mirrors.
+          # 3. Update Mirrorlist (Fix 'target not found' due to stale mirrors)
           echo "Updating mirrorlist..."
           reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
           
-          # 4. Force refresh package database with new mirrors
+          # 4. Refresh database
           pacman -Syy --noconfirm
 
       - name: Configure ISO Profile
@@ -36,9 +35,11 @@ jobs:
           # 1. Copy default releng profile
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
           
-          # 2. Append Custom Packages (Only new ones)
+          # 2. Append Custom Packages (Cleaned)
+          # [FIX] Use sed to remove comments (#...) and trailing whitespace
           if [ -f "custom_packages.x86_64" ]; then
-            cat custom_packages.x86_64 >> /tmp/archlive/packages.x86_64
+            echo "Appending custom packages..."
+            sed 's/#.*//;s/[ \t]*$//;/^$/d' custom_packages.x86_64 >> /tmp/archlive/packages.x86_64
             echo "Custom packages appended successfully."
           else
             echo "Error: custom_packages.x86_64 file not found!"
@@ -67,18 +68,17 @@ jobs:
           [ ! -f "$AIROOTFS_DIR/etc/shadow" ] && touch "$AIROOTFS_DIR/etc/shadow"
           [ ! -f "$AIROOTFS_DIR/etc/group" ] && touch "$AIROOTFS_DIR/etc/group"
 
-          # 1. Manually Create User 'arch' (Before SDDM starts)
+          # 1. Manually Create User 'arch'
           echo "arch:x:1000:1000::/home/arch:/bin/zsh" >> "$AIROOTFS_DIR/etc/passwd"
           echo "arch:::0:99999:7:::" >> "$AIROOTFS_DIR/etc/shadow"
           echo "arch:x:1000:" >> "$AIROOTFS_DIR/etc/group"
           
-          # 2. Add 'arch' to Hardware Groups (Fixes Mouse/Keyboard freeze)
+          # 2. Add 'arch' to Hardware Groups
           add_user_to_group() {
             GROUP="$1"
             USER="arch"
             FILE="$AIROOTFS_DIR/etc/group"
             if grep -q "^$GROUP:" "$FILE"; then
-              # Append user to existing group line
               sed -i "s/^$GROUP:x:[0-9]*:$/&${USER}/;s/^$GROUP:x:[0-9]*:.*/&,${USER}/" "$FILE"
               sed -i 's/,,/,/g' "$FILE"
             else
@@ -86,7 +86,6 @@ jobs:
             fi
           }
 
-          # CRITICAL GROUPS for Real Hardware & Wayland:
           for group in wheel input video render audio optical storage lp; do
              add_user_to_group "$group"
           done
@@ -113,11 +112,11 @@ jobs:
           EOF
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
-          # [3-3] Fix Home Directory Permissions
+          # [3-3] Fix Home Directory
           mkdir -p "$AIROOTFS_DIR/home/arch"
           chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
           
-          # [3-4] Fix PAM (Allow passwordless login)
+          # [3-4] Fix PAM
           mkdir -p "$AIROOTFS_DIR/etc/pam.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
           #%PAM-1.0
