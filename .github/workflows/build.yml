@@ -16,7 +16,6 @@ jobs:
 
       - name: Install Build Tools
         run: |
-          # [Simple] Install only necessary tools
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git
 
@@ -26,7 +25,6 @@ jobs:
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
           
           # 2. Append Custom Packages (Cleaned)
-          # Use sed to remove comments and trailing spaces
           if [ -f "custom_packages.x86_64" ]; then
             echo "Appending custom packages..."
             sed 's/#.*//;s/[ \t]*$//;/^$/d' custom_packages.x86_64 >> /tmp/archlive/packages.x86_64
@@ -40,27 +38,41 @@ jobs:
           AIROOTFS_DIR="/tmp/archlive/airootfs"
           SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
           MULTI_USER_DIR="$SYSTEMD_DIR/multi-user.target.wants"
+          GETTY_DIR="$SYSTEMD_DIR/getty.target.wants" # For disabling TTY1 console
 
           mkdir -p "$SYSTEMD_DIR"
           mkdir -p "$MULTI_USER_DIR"
 
-          # [3-1] Enable Services
-          ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
-          ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
-          ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
+          # ==================================================================
+          # [CRITICAL FIX 1] Remove Conflicts (Network, Audio, Input, Console)
+          # ==================================================================
+          
+          echo "Removing conflicting services..."
+
+          # 1. Network Conflicts (NetworkManager vs systemd-networkd/iwd)
+          rm -f "$MULTI_USER_DIR/systemd-networkd.service"
+          rm -f "$MULTI_USER_DIR/systemd-resolved.service"
+          rm -f "$MULTI_USER_DIR/iwd.service"
+
+          # 2. Audio/Accessibility Conflicts (espeakup TTS vs PipeWire)
+          # espeakup captures the sound card early for blind accessibility.
+          # This conflicts with a modern desktop audio setup.
+          rm -f "$MULTI_USER_DIR/espeakup.service"
+          
+          # 3. USB/Input Conflicts (brltty vs USB Devices)
+          # brltty can mistakenly claim USB serial devices/keyboards, causing them to freeze.
+          rm -f "$MULTI_USER_DIR/brltty.service"
+
+          # 4. Console Conflict (getty@tty1 vs SDDM)
+          # Prevent the text console from fighting with the GUI login screen.
+          rm -f "$GETTY_DIR/getty@tty1.service"
 
           # ==================================================================
-          # [CRITICAL FIX] Safe User & Permission Setup
+          # [CRITICAL FIX 2] Safe User & Permission Setup
           # ==================================================================
           
-          # [Correction] Do NOT touch /etc/passwd manually. It breaks pacman hooks.
-          # Instead, we rely on the default 'releng' setup for the user 'arch'.
-          
-          # 1. Add 'arch' user to critical groups securely using systemd-sysusers
-          # This creates a config file that systemd reads to modify the user groups safely.
           mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
           cat <<EOF > "$AIROOTFS_DIR/usr/lib/sysusers.d/arch-groups.conf"
-          # Type Name ID GECOS Home Shell
           # Add arch to extra groups: input (mouse/kb), video/render (gpu), wheel (admin)
           m arch input
           m arch video
@@ -71,16 +83,29 @@ jobs:
           m arch wheel
           EOF
 
-          # 2. Enable Passwordless Sudo
+          # Enable Passwordless Sudo
           mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
           echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
           chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
 
           # ==================================================================
+          # [Enable Custom Services]
+          # ==================================================================
+          
+          # 1. SDDM (Display Manager)
+          ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
+          
+          # 2. NetworkManager
+          ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
+          
+          # 3. Bluetooth
+          ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
+
+          # ==================================================================
           # [SDDM & Wayland Setup]
           # ==================================================================
 
-          # [3-2] Configure SDDM Auto-login & Force Wayland
+          # Configure SDDM Auto-login & Force Wayland
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
           [Autologin]
@@ -93,14 +118,11 @@ jobs:
           EOF
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
-          # [3-3] Fix Home Directory Permissions
-          # Pre-create home dir so Plasma has a place to write configs.
-          # We use UID 1000 which is the standard default for the first user.
+          # Fix Home Directory Permissions
           mkdir -p "$AIROOTFS_DIR/home/arch"
           chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
           
-          # [3-4] Fix PAM (Allow passwordless login)
-          # SDDM needs this to allow login without typing a password.
+          # Fix PAM
           mkdir -p "$AIROOTFS_DIR/etc/pam.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
           #%PAM-1.0
