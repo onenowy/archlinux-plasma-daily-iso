@@ -24,6 +24,9 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git sed github-cli
+          
+          # Fix 'fatal: not a git repository' error inside container
+          git config --global --add safe.directory '*'
 
       - name: Configure Clean Profile
         run: |
@@ -124,8 +127,6 @@ jobs:
       # ==================================================================
       # [Release Step] Using GitHub CLI (gh)
       # ==================================================================
-      # The official 'gh' CLI handles large file uploads better than actions.
-      # It also simplifies deleting the old tag and creating a new one.
       
       - name: Create Release and Upload
         env:
@@ -133,14 +134,15 @@ jobs:
         run: |
           echo "Managing release..."
           
-          # 1. Delete old release/tag if it exists (ignore error if not found)
-          gh release delete daily-build --yes --cleanup-tag || true
+          # Force git to trust the directory inside the container
+          git config --global --add safe.directory '*'
+
+          # 1. Delete old release/tag if it exists
+          gh release delete daily-build --yes --cleanup-tag --repo ${{ github.repository }} || true
           
           # 2. Create new release and upload ISO
-          # --latest: Marks this as the latest release
-          # --title: Sets the visible title
-          # --notes: Sets the description
           gh release create daily-build ./out/*.iso \
+            --repo ${{ github.repository }} \
             --title "Arch Linux Plasma (Wayland) Daily Build" \
             --notes "Automated build. Compressed with XZ. Contains minimal Plasma, Firefox, and essential utilities." \
             --latest \
