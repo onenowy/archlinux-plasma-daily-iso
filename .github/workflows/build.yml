@@ -19,14 +19,15 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git sed
 
-      - name: Configure Clean Profile & Polish
+      - name: Configure Clean Profile
         run: |
           # 1. Copy releng skeleton
           cp -r /usr/share/archiso/configs/releng /tmp/archlive
           
           # ==================================================================
-          # [STEP 1] Overwrite Package List
+          # [STEP 1] Overwrite Package List (Clean Slate)
           # ==================================================================
+          # We use package_list.x86_64 to REPLACE the default list.
           if [ -f "package_list.x86_64" ]; then
             echo "Overwriting package list..."
             sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > /tmp/archlive/packages.x86_64
@@ -35,40 +36,25 @@ jobs:
             exit 1
           fi
 
-          # ==================================================================
-          # [STEP 2] Customize ISO Metadata & Boot Menu (The "Polish")
-          # ==================================================================
-          
-          # 2-1. Modify profiledef.sh (ISO Name & Label)
-          # Change iso_name to "arch-plasma"
-          sed -i 's/iso_name="archlinux"/iso_name="arch-plasma"/' /tmp/archlive/profiledef.sh
-          # Change label to "ARCH_PLASMA"
-          sed -i 's/iso_label="ARCH_%Y%m"/iso_label="ARCH_PLASMA"/' /tmp/archlive/profiledef.sh
-
-          # 2-2. Modify Boot Menu Labels (UEFI & BIOS)
-          # Change "Arch Linux install medium" to "Arch Linux Plasma (Wayland)"
-          sed -i 's/Arch Linux install medium/Arch Linux Plasma (Wayland)/g' \
-            /tmp/archlive/syslinux/archiso_sys-linux.cfg \
-            /tmp/archlive/efiboot/loader/entries/01-archiso-x86_64-linux.conf
+          # (Skipped: ISO Name & Boot Menu modification to avoid errors)
 
           # ==================================================================
-          # [STEP 3] Reset Services & Cleanup Residue
+          # [STEP 2] Reset Services & Cleanup
           # ==================================================================
           AIROOTFS_DIR="/tmp/archlive/airootfs"
           SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
           MULTI_USER_DIR="$SYSTEMD_DIR/multi-user.target.wants"
 
-          # 3-1. Wipe default services (Remove networkd, espeakup, brltty hooks)
+          # 2-1. Wipe default services (Remove networkd, espeakup, brltty hooks)
           echo "Wiping default service symlinks..."
           rm -rf "$MULTI_USER_DIR"/*
           rm -rf "$SYSTEMD_DIR"/getty.target.wants/*
           
-          # 3-2. Remove releng install scripts residue
-          # These are physical files provided by releng for the installation guide
+          # 2-2. Remove releng install scripts residue
           rm -f "$AIROOTFS_DIR/root/install.txt"
           
           # ==================================================================
-          # [STEP 4] Safe User & Permission Setup
+          # [STEP 3] Safe User & Permission Setup
           # ==================================================================
           mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
           cat <<EOF > "$AIROOTFS_DIR/usr/lib/sysusers.d/arch-groups.conf"
@@ -89,14 +75,14 @@ jobs:
           chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
 
           # ==================================================================
-          # [STEP 5] Enable Essential Services
+          # [STEP 4] Enable Essential Services
           # ==================================================================
           ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
           ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
           ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
           # ==================================================================
-          # [STEP 6] Desktop Configuration
+          # [STEP 5] Desktop Configuration
           # ==================================================================
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
