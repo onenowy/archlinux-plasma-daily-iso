@@ -20,38 +20,15 @@ jobs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Check Updates Logic
+
+      # [SCRIPT] Run Update Check
+      - name: Run Update Check Script
         id: check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Setup Environment
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm git sed github-cli
-          git config --global --add safe.directory '*'
-
-          if [ ! -f "package_list.x86_64" ]; then
-            echo "Error: package_list.x86_64 not found!"
-            exit 1
-          fi
-          
-          # 2. Compare Hash (Current vs Release)
-          sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > clean_list.txt
-          pacman -Sp --noconfirm - < clean_list.txt | sed 's|.*/||' | sort | sha256sum | awk '{print $1}' > current.hash
-          
-          gh release download daily-build -p package.hash -R ${{ github.repository }} -O old.hash || touch old.hash
-          
-          if cmp -s current.hash old.hash; then
-             echo "::notice::No updates found."
-             echo "should_build=false" >> $GITHUB_OUTPUT
-          else
-             echo "::notice::Updates detected."
-             echo "should_build=true" >> $GITHUB_OUTPUT
-          fi
-          
-          mkdir -p hash_artifact
-          cp current.hash hash_artifact/package.hash
+          chmod +x scripts/check_updates.sh
+          ./scripts/check_updates.sh
 
       - uses: actions/upload-artifact@v4
         if: steps.check.outputs.should_build == 'true'
@@ -85,88 +62,21 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git sed github-cli
 
-      - name: Setup 'Diet' Profile & Optimization
+      # [SCRIPT] Setup Profile & Optimizations
+      - name: Setup 'Diet' Profile
         run: |
-          # 1. Copy Releng Profile
-          cp -r /usr/share/archiso/configs/releng /tmp/archlive
+          chmod +x scripts/setup_profile.sh
+          ./scripts/setup_profile.sh
 
-          # 2. [CORE] Apply Custom Package List
-          if [ -f "package_list.x86_64" ]; then
-             echo "Applying custom package list from repository..."
-             sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > /tmp/archlive/packages.x86_64
-          else
-             echo "::error::package_list.x86_64 file not found!"
-             exit 1
-          fi
-
-          # 3. [DIET] Remove Docs & Locales via pacman.conf
-          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /etc/pacman.conf
-          sed -i '/^#NoExtract/c\NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en* !usr/share/locale/ko*' /tmp/archlive/pacman.conf
-
-          # 4. [ROOTFS] Maximize XZ Compression for Root Image
-          sed -i "s/airootfs_image_tool_options=('-comp' 'zstd'.*)/airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')/" /tmp/archlive/profiledef.sh
-
-          # 5. [INITRAMFS] Optimize Initramfs Size (The Boot Image)
-          # Target file: /tmp/archlive/mkinitcpio.conf (Config for the Live ISO, NOT the installed system)
-          
-          # A) Remove 'kms' hook to prevent GPU firmware inclusion
-          echo "Removing KMS hook from ISO mkinitcpio..."
-          sed -i 's/\<kms\>//g' /tmp/archlive/mkinitcpio.conf
-          
-          # B) Force XZ Compression with Ultra settings (-9e)
-          echo "Setting XZ compression for Initramfs..."
-          sed -i 's/^COMPRESSION=.*/COMPRESSION="xz"/' /tmp/archlive/mkinitcpio.conf
-          
-          # C) Add Compression Options if missing, or update them
-          if grep -q "COMPRESSION_OPTIONS" /tmp/archlive/mkinitcpio.conf; then
-             sed -i "s/^COMPRESSION_OPTIONS=.*/COMPRESSION_OPTIONS=('-9e')/" /tmp/archlive/mkinitcpio.conf
-          else
-             echo "COMPRESSION_OPTIONS=('-9e')" >> /tmp/archlive/mkinitcpio.conf
-          fi
-
-          # 6. Desktop Configuration
-          AIROOTFS_DIR="/tmp/archlive/airootfs"
-          
-          # Copy SDDM Autologin config
-          mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
-          if [ -f "configs/autologin.conf" ]; then
-             echo "Applying custom autologin config..."
-             cp configs/autologin.conf "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
-             chmod 644 "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
-          else
-             echo "::warning::configs/autologin.conf not found! Using default."
-          fi
-          
-          # Enable Essential Services
-          SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
-          mkdir -p "$SYSTEMD_DIR/multi-user.target.wants"
-          ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
-          ln -sf /usr/lib/systemd/system/NetworkManager.service "$SYSTEMD_DIR/multi-user.target.wants/NetworkManager.service"
-
+      # Actual ISO Build Command
       - name: Build ISO
         run: |
           mkarchiso -v -w /tmp/archiso-work -o ./out /tmp/archlive
 
+      # [SCRIPT] Create Release & Upload
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Managing release..."
-          git config --global --add safe.directory '*'
-          
-          if gh release view daily-build --repo ${{ github.repository }} > /dev/null 2>&1; then
-             gh release delete daily-build --yes --cleanup-tag --repo ${{ github.repository }}
-          fi
-          
-          cd out
-          ISO_FILE=$(ls *.iso | head -n 1)
-          FILE_SIZE=$(stat -c%s "$ISO_FILE")
-          echo "Final ISO Size: $(($FILE_SIZE / 1024 / 1024)) MB"
-          cd ..
-          
-          gh release create daily-build ./out/*.iso ./out_hash/package.hash \
-            --repo ${{ github.repository }} \
-            --title "Arch Plasma Diet Build" \
-            --notes "Optimized ~1GB Build. Minimal Plasma + Split Firmware + Highly Compressed." \
-            --latest \
-            --target ${{ github.sha }}
+          chmod +x scripts/create_release.sh
+          ./scripts/create_release.sh
