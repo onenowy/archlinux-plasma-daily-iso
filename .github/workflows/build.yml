@@ -1,4 +1,4 @@
-name: Clean Arch Plasma ISO Build (UEFI Only)
+name: Clean Arch Plasma ISO Build
 
 on:
   workflow_dispatch:      # Manual trigger only
@@ -27,6 +27,7 @@ jobs:
           # ==================================================================
           # [STEP 1] Overwrite Package List
           # ==================================================================
+          # We replace the default package list with our custom list.
           if [ -f "package_list.x86_64" ]; then
             echo "Overwriting package list..."
             sed 's/#.*//;s/[ \t]*$//;/^$/d' package_list.x86_64 > /tmp/archlive/packages.x86_64
@@ -36,31 +37,25 @@ jobs:
           fi
 
           # ==================================================================
-          # [STEP 1.5] Disable BIOS Boot Mode (UEFI Only Fix)
-          # ==================================================================
-          # We remove 'bios.syslinux.mbr' and 'bios.syslinux.eltorito' from bootmodes.
-          # This stops mkarchiso from asking for the 'syslinux' package.
-          sed -i "s/'bios.syslinux.mbr'//" /tmp/archlive/profiledef.sh
-          sed -i "s/'bios.syslinux.eltorito'//" /tmp/archlive/profiledef.sh
-
-          # ==================================================================
           # [STEP 2] Reset Services & Cleanup Residue
           # ==================================================================
           AIROOTFS_DIR="/tmp/archlive/airootfs"
           SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
           MULTI_USER_DIR="$SYSTEMD_DIR/multi-user.target.wants"
 
-          # 2-1. Wipe default services
+          # 2-1. Wipe default services (Remove systemd-networkd, getty@tty1, etc.)
           echo "Wiping default service symlinks..."
           rm -rf "$MULTI_USER_DIR"/*
           rm -rf "$SYSTEMD_DIR"/getty.target.wants/*
           
           # 2-2. Remove releng install scripts residue
+          # Removing files that are not needed for a desktop ISO
           rm -f "$AIROOTFS_DIR/root/install.txt"
           
           # ==================================================================
           # [STEP 3] Safe User & Permission Setup
           # ==================================================================
+          # Create 'arch' user and assign groups using sysusers.d
           mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
           cat <<EOF > "$AIROOTFS_DIR/usr/lib/sysusers.d/arch-groups.conf"
           u arch 1000 "Arch Linux Live User" /home/arch /bin/bash
@@ -82,13 +77,20 @@ jobs:
           # ==================================================================
           # [STEP 4] Enable Essential Services
           # ==================================================================
+          # 1. SDDM (Display Manager)
           ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
+          
+          # 2. NetworkManager (Main network controller)
           ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
+          
+          # 3. Bluetooth
           ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
           # ==================================================================
           # [STEP 5] Desktop Configuration
           # ==================================================================
+          
+          # Configure SDDM: Auto-login + Wayland
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
           [Autologin]
@@ -100,9 +102,11 @@ jobs:
           EOF
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
+          # Create Home Directory with correct permissions
           mkdir -p "$AIROOTFS_DIR/home/arch"
           chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
           
+          # Fix PAM for passwordless login
           mkdir -p "$AIROOTFS_DIR/etc/pam.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
           #%PAM-1.0
@@ -119,6 +123,6 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Clean-Arch-Plasma-ISO-UEFI
+          name: Clean-Arch-Plasma-ISO
           path: out/*.iso
           retention-days: 3
