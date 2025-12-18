@@ -2,8 +2,8 @@
 base
 linux
 linux-firmware
-syslinux             # Required by mkarchiso to build the ISO (even for UEFI)
-grub                 # Bootloader for the installed system
+syslinux             # Required for ISO generation
+grub
 efibootmgr
 dosfstools
 mtools
@@ -18,52 +18,48 @@ intel-ucode
 amd-ucode
 sof-firmware
 alsa-firmware
-linux-firmware-marvell
 
 # --- [Graphics & Input Drivers] ---
 mesa
 vulkan-intel
 vulkan-radeon
-vulkan-mesa-layers
 intel-media-driver
 libva-mesa-driver
 xf86-input-libinput
 
-# --- [Desktop Environment] ---
-plasma-meta
+# --- [Desktop Environment - Minimal] ---
+# Using plasma-desktop instead of meta to save space
+plasma-desktop
 sddm
 egl-wayland
+powerdevil           # Power management
+kscreen              # Screen management
+breeze               # Theme
+breeze-gtk
+kde-gtk-config
 
-# --- [Network & Bluetooth] ---
-networkmanager
-bluez
-bluez-utils
+# --- [Network & Bluetooth GUI] ---
+plasma-nm
+bluedevil
 
-# --- [Audio - PipeWire] ---
+# --- [Audio GUI] ---
+plasma-pa
+
+# --- [Audio Backend] ---
 pipewire
 wireplumber
 pipewire-alsa
 pipewire-pulse
 
-# --- [Apps & Utilities] ---
+# --- [Apps] ---
 konsole
 dolphin
-kate
-ark
-spectacle
-gwenview
-okular
-kcalc
-partitionmanager
-firefox
-git
+firefox              # Web Browser (Added)
 nano
 p7zip
-unrar
 ffmpegthumbs
 
-# --- [Fonts] ---
+# --- [Fonts - Minimal] ---
 noto-fonts
-noto-fonts-cjk
+noto-fonts-cjk       # Korean font support
 noto-fonts-emoji
-ttf-liberation
