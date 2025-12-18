@@ -1,14 +1,14 @@
-name: Manual Arch ISO Build
+name: Manual Arch ISO Build (Standard)
 
 on:
-  workflow_dispatch:      # Allows manual trigger via the 'Actions' tab
+  workflow_dispatch:      # Manual trigger only
 
 jobs:
   build_iso:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-      options: --privileged
+      options: --privileged # Privileged mode required for mounting filesystems
     
     steps:
       - name: Checkout repository
@@ -16,6 +16,7 @@ jobs:
 
       - name: Install Build Tools
         run: |
+          # Standard installation
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso make git
 
@@ -47,53 +48,67 @@ jobs:
           ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
           # ==================================================================
-          # [CRITICAL FIX] Manually Create User 'arch'
+          # [CRITICAL FIX] Hardware Permissions & User Setup
           # ==================================================================
           
-          # Create User/Shadow/Group entries manually so SDDM sees them immediately
-          # Check if files exist before appending to avoid errors, or create them
+          # Ensure config files exist
           [ ! -f "$AIROOTFS_DIR/etc/passwd" ] && touch "$AIROOTFS_DIR/etc/passwd"
           [ ! -f "$AIROOTFS_DIR/etc/shadow" ] && touch "$AIROOTFS_DIR/etc/shadow"
           [ ! -f "$AIROOTFS_DIR/etc/group" ] && touch "$AIROOTFS_DIR/etc/group"
 
+          # 1. Manually Create User 'arch' (Before SDDM starts)
           echo "arch:x:1000:1000::/home/arch:/bin/zsh" >> "$AIROOTFS_DIR/etc/passwd"
           echo "arch:::0:99999:7:::" >> "$AIROOTFS_DIR/etc/shadow"
           echo "arch:x:1000:" >> "$AIROOTFS_DIR/etc/group"
           
-          # Add arch to wheel group. Note: releng profile usually has /etc/group
-          # If wheel doesn't exist in the copied profile, create it, otherwise append.
-          if grep -q "^wheel:" "$AIROOTFS_DIR/etc/group"; then
-             sed -i 's/^wheel:x:998:$/wheel:x:998:arch/' "$AIROOTFS_DIR/etc/group"
-          else
-             echo "wheel:x:998:arch" >> "$AIROOTFS_DIR/etc/group"
-          fi
+          # 2. Add 'arch' to Hardware Groups (Fixes Mouse/Keyboard freeze)
+          add_user_to_group() {
+            GROUP="$1"
+            USER="arch"
+            FILE="$AIROOTFS_DIR/etc/group"
+            if grep -q "^$GROUP:" "$FILE"; then
+              # Append user to existing group line
+              sed -i "s/^$GROUP:x:[0-9]*:$/&${USER}/;s/^$GROUP:x:[0-9]*:.*/&,${USER}/" "$FILE"
+              sed -i 's/,,/,/g' "$FILE"
+            else
+              echo "Warning: Group $GROUP not found in /etc/group"
+            fi
+          }
 
-          # Enable Passwordless Sudo
+          # CRITICAL GROUPS for Real Hardware & Wayland:
+          # input: Required for direct access to keyboard/mouse
+          # video/render: Required for GPU acceleration
+          for group in wheel input video render audio optical storage lp; do
+             add_user_to_group "$group"
+          done
+
+          # 3. Enable Passwordless Sudo
           mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
           echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
           chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
 
           # ==================================================================
-          # [SDDM & Session Setup]
+          # [SDDM & Wayland Setup]
           # ==================================================================
 
-          # [3-2] Configure SDDM Auto-login
+          # [3-2] Configure SDDM Auto-login & Force Wayland
           mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
           [Autologin]
           User=arch
           Session=plasma.desktop
           Relogin=false
+          
+          [General]
+          DisplayServer=wayland
           EOF
           chmod 755 "$AIROOTFS_DIR/etc/sddm.conf.d"
 
-          # [3-3] Fix Home Directory
+          # [3-3] Fix Home Directory Permissions
           mkdir -p "$AIROOTFS_DIR/home/arch"
           chown -R 1000:1000 "$AIROOTFS_DIR/home/arch"
           
-          # [3-4] Fix PAM (Create file instead of sed)
-          # SDDM package isn't installed yet, so the file doesn't exist.
-          # We create a custom PAM config that allows passwordless login.
+          # [3-4] Fix PAM (Allow passwordless login)
           mkdir -p "$AIROOTFS_DIR/etc/pam.d"
           cat <<EOF > "$AIROOTFS_DIR/etc/pam.d/sddm"
           #%PAM-1.0

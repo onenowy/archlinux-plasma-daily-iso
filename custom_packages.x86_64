@@ -1,14 +1,27 @@
-# --- Desktop Environment (KDE Plasma & Wayland) ---
+# --- Desktop Environment ---
 plasma-meta
 sddm
 egl-wayland
 
-# --- Network & Bluetooth (Not in releng) ---
-networkmanager
-bluez
+# --- [REAL HARDWARE] Additional Firmware ---
+# Basic firmware is in releng. Adding only missing audio/video firmware.
+sof-firmware            # Audio firmware for modern Intel laptops
+alsa-firmware
+
+# --- [REAL HARDWARE] Graphics Drivers ---
+# Mesa is pulled by plasma-meta. Only explicit GPU drivers needed here.
+vulkan-intel            # Intel GPU
+vulkan-radeon           # AMD GPU
+vulkan-mesa-layers
+intel-media-driver      # Intel Video Acceleration
+libva-mesa-driver       # AMD Video Acceleration
+
+# --- Bluetooth Utils ---
+# bluez is pulled by plasma-meta. Adding utils for CLI (optional but good).
 bluez-utils
 
 # --- Essential GUI Utilities ---
+# Konsole/Dolphin are NOT strict deps of plasma-meta, so keep them.
 konsole
 dolphin
 kate
@@ -18,9 +31,8 @@ gwenview
 okular
 kcalc
 partitionmanager
-plasma-systemmonitor
 
-# --- Archive Backends (For Ark) ---
+# --- Archive Backends ---
 p7zip
 unrar
 
@@ -30,13 +42,14 @@ ffmpegthumbs
 # --- Internet ---
 firefox
 
-# --- Audio Backend (PipeWire) ---
+# --- Audio Backend ---
+# Plasma-pa pulls pulse support, but we explicity list pipewire-pulse 
+# to ensure PipeWire is chosen over legacy PulseAudio.
 wireplumber
-pipewire
 pipewire-alsa
 pipewire-pulse
 
-# --- Fonts (Korean Support) ---
+# --- Fonts ---
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
