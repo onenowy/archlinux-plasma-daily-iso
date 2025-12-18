@@ -27,7 +27,7 @@ sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" /etc/pacman.conf
 sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" "$WORK_DIR/pacman.conf"
 
 # 4. [INITRAMFS] Optimize Size (Target: archiso.conf)
-# Remove 'kms' (Graphics drivers) and PXE network hooks to save space.
+# Remove 'kms' and PXE hooks to save space.
 echo "-> Optimizing Initramfs (archiso.conf)..."
 
 CONF_FILE=$(find "$WORK_DIR" -name "archiso.conf" | head -n 1)
@@ -35,15 +35,8 @@ CONF_FILE=$(find "$WORK_DIR" -name "archiso.conf" | head -n 1)
 if [ -n "$CONF_FILE" ]; then
     echo "   Processing config: $CONF_FILE"
     
-    # Updated removal list based on latest archiso (v70+) defaults
-    # 'pcmcia' and 'archiso_shutdown' are already gone in upstream.
-    HOOKS_TO_REMOVE=(
-        "kms" 
-        "archiso_pxe_common" 
-        "archiso_pxe_nbd" 
-        "archiso_pxe_http" 
-        "archiso_pxe_nfs"
-    )
+    # Updated removal list (kms + pxe hooks)
+    HOOKS_TO_REMOVE=("kms" "archiso_pxe_common" "archiso_pxe_nbd" "archiso_pxe_http" "archiso_pxe_nfs")
     
     for HOOK in "${HOOKS_TO_REMOVE[@]}"; do
         if grep -q "\<$HOOK\>" "$CONF_FILE"; then
@@ -69,10 +62,43 @@ else
     echo "::warning::configs/autologin.conf not found!"
 fi
 
-# Enable Essential Services
+# Enable Essential Services (SDDM & NetworkManager)
 SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
 mkdir -p "$SYSTEMD_DIR/multi-user.target.wants"
 ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$SYSTEMD_DIR/multi-user.target.wants/NetworkManager.service"
+
+# 6. [USER SETUP] Create 'arch' user for Autologin
+echo "-> Creating 'arch' user configuration..."
+
+# 6-1. Use systemd-sysusers to create the user 'arch' with UID 1000
+# This creates the user in /etc/passwd at boot/install time correctly.
+mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
+cat <<EOF > "$AIROOTFS_DIR/usr/lib/sysusers.d/archiso-user.conf"
+u arch 1000 "Arch Live User" /home/arch /bin/bash
+m arch wheel
+m arch video
+m arch audio
+m arch storage
+m arch optical
+m arch network
+m arch power
+EOF
+
+# 6-2. Create Home Directory
+# We must create the directory so permissions can be applied
+mkdir -p "$AIROOTFS_DIR/home/arch"
+
+# 6-3. Set Home Directory Permissions in profiledef.sh
+# This ensures /home/arch is owned by arch:arch (1000:1000)
+cat <<EOF >> "$WORK_DIR/profiledef.sh"
+file_permissions+=(["/home/arch"]="1000:1000:755")
+EOF
+
+# 6-4. Enable Passwordless Sudo for 'wheel' group
+# This allows the 'arch' user to use sudo without a password
+mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
+echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
+chmod 440 "$AIROOTFS_DIR/etc/sudoers.d/00-wheel-nopasswd"
 
 echo ">>> Profile Setup Complete."
