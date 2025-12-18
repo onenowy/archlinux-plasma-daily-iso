@@ -23,7 +23,7 @@ jobs:
       - name: Install Build Tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm archiso make git sed
+          pacman -S --noconfirm archiso make git sed github-cli
 
       - name: Configure Clean Profile
         run: |
@@ -42,10 +42,11 @@ jobs:
           fi
 
           # ==================================================================
-          # [STEP 1.5] Maximize Compression (XZ)
+          # [STEP 1.5] Maximize Compression (XZ) - Forceful Apply
           # ==================================================================
-          # Switch from 'zstd' to 'xz' for smaller ISO size (~1GB target)
-          sed -i "s/'-comp' 'zstd'/'-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M'/" /tmp/archlive/profiledef.sh
+          # Use regex to replace the compression setting, ensuring it matches.
+          # This forces XZ compression to keep ISO size under 2GB.
+          sed -i "s/airootfs_image_tool_options=('-comp' 'zstd'.*)/airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')/" /tmp/archlive/profiledef.sh
 
           # ==================================================================
           # [STEP 2] Reset Services & Cleanup Residue
@@ -121,34 +122,26 @@ jobs:
           mkarchiso -v -w /tmp/archiso-work -o ./out /tmp/archlive
 
       # ==================================================================
-      # [Release Step]
+      # [Release Step] Using GitHub CLI (gh)
       # ==================================================================
+      # The official 'gh' CLI handles large file uploads better than actions.
+      # It also simplifies deleting the old tag and creating a new one.
       
-      # 1. Delete the previous release and tag to prevent accumulation
-      - name: Delete Old Release
-        uses: dev-drprasad/delete-tag-and-release@v0.2.1
-        with:
-          delete_release: true
-          tag_name: daily-build
+      - name: Create Release and Upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 2. Upload the new ISO as a fresh release
-      - name: Upload New Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Arch Linux Plasma (Wayland) Daily Build
-          tag_name: daily-build
-          files: out/*.iso
-          body: |
-            This is an automated daily build of Arch Linux with KDE Plasma (Wayland).
-            
-            **Features:**
-            - Minimal Plasma Desktop (Wayland)
-            - Highly Compressed (XZ)
-            - Clean configuration (No bloatware)
-            
-            *Built at: ${{ steps.date.outputs.date }}*
-          token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: false
-          make_latest: true
+        run: |
+          echo "Managing release..."
+          
+          # 1. Delete old release/tag if it exists (ignore error if not found)
+          gh release delete daily-build --yes --cleanup-tag || true
+          
+          # 2. Create new release and upload ISO
+          # --latest: Marks this as the latest release
+          # --title: Sets the visible title
+          # --notes: Sets the description
+          gh release create daily-build ./out/*.iso \
+            --title "Arch Linux Plasma (Wayland) Daily Build" \
+            --notes "Automated build. Compressed with XZ. Contains minimal Plasma, Firefox, and essential utilities." \
+            --latest \
+            --target ${{ github.sha }}
