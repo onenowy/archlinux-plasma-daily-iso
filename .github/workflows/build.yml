@@ -1,4 +1,4 @@
-name: Arch Plasma ISO (Diet Edition)
+name: Arch Plasma ISO
 
 on:
   workflow_dispatch:      # Manual trigger
