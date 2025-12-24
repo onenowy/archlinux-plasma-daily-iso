@@ -36,7 +36,6 @@ xf86-input-libinput
 # --- [Desktop Environment - Minimal] ---
 plasma-desktop
 sddm
-egl-wayland
 powerdevil
 kscreen
 breeze
@@ -52,9 +51,7 @@ bluedevil
 plasma-pa
 
 # --- [Audio Backend] ---
-pipewire
 wireplumber
-pipewire-alsa
 pipewire-pulse
 
 # --- [Apps - Internet] ---
@@ -79,5 +76,3 @@ xfsprogs
 
 # --- [CLI Utilities] ---
 nano
-unrar
-p7zip
