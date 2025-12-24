@@ -8,7 +8,7 @@ iso_application="Arch Linux Live/Rescue DVD"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"
 buildmodes=('iso')
-bootmodes=('bios.syslinux' 'uefi.systemd-boot')
+bootmodes=('uefi.systemd-boot')
 pacman_conf="pacman.conf"
 
 # [EROFS Configuration]
