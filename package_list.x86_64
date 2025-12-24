@@ -83,5 +83,4 @@ unrar
 p7zip
 
 # --- [Fonts] ---
-noto-fonts
-noto-fonts-emoji
+ttf-liberation
