@@ -12,51 +12,12 @@ jobs:
   delete-runs:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Delete old workflow runs
         uses: actions/github-script@v7
         with:
           script: |
-            // Number of runs to keep per workflow
-            const KEEP_PER_WORKFLOW = {
-              'Arch Plasma ISO': 23,
-              'Periodic Cleanup': 2
-            };
-            const DEFAULT_KEEP = 5;
-
-            // Fetch all workflow runs
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRunsForRepo,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                per_page: 100
-              }
-            );
-
-            // Group runs by workflow name
-            const groupedRuns = {};
-            for (const run of runs) {
-              const name = run.name;
-              if (!groupedRuns[name]) groupedRuns[name] = [];
-              groupedRuns[name].push(run);
-            }
-
-            // Clean up each workflow
-            let deleteCount = 0;
-            for (const [name, workflowRuns] of Object.entries(groupedRuns)) {
-              workflowRuns.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-              const keepCount = KEEP_PER_WORKFLOW[name] ?? DEFAULT_KEEP;
-              const toDelete = workflowRuns.slice(keepCount);
-
-              for (const run of toDelete) {
-                console.log(`Deleting run #${run.id} (${run.name}) from ${run.created_at}`);
-                await github.rest.actions.deleteWorkflowRun({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id: run.id
-                });
-                deleteCount++;
-              }
-            }
-
-            console.log(`Total: ${runs.length}, Deleted: ${deleteCount}`);
+            const script = require('./.github/scripts/cleanup-runs.js');
+            await script({ github, context });
