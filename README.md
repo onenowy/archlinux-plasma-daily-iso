@@ -1,2 +1,2 @@
-# archlinux-plasma-daily-iso
-archlinux plasma iso (wayland)
+# archlinux-plasma-live-iso
+archlinux plasma live iso image (wayland)
