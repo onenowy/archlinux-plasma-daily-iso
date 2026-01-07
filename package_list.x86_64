@@ -25,10 +25,6 @@ sof-firmware
 
 # --- [Graphics & Input Drivers] ---
 mesa
-vulkan-intel
-vulkan-radeon
-intel-media-driver
-libva-mesa-driver
 
 # --- [Desktop Environment - Minimal] ---
 plasma-desktop
