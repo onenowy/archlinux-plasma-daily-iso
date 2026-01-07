@@ -4,7 +4,7 @@ set -e
 echo ">>> Managing Release..."
 
 # 1. Git Configuration
-git config --global --add safe.directory '*'
+# git config --global --add safe.directory '*'
 
 # 2. Define Variables
 REPO="$GITHUB_REPOSITORY"   # Automatically provided by Actions
