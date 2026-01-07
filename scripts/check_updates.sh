@@ -26,8 +26,8 @@ echo "   Current Hash: $(cat current.hash)"
 
 # 4. Download Previous Hash
 echo "-> Downloading previous hash..."
-# Downloads 'package.hash' from the 'daily-build' release
-gh release download daily-build -p package.hash -R "$GITHUB_REPOSITORY" -O old.hash || touch old.hash
+# Downloads 'package.hash' from the 'iso-build' release
+gh release download iso-build -p package.hash -R "$GITHUB_REPOSITORY" -O old.hash || touch old.hash
 
 echo "   Old Hash:     $(cat old.hash)"
 
