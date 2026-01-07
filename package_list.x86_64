@@ -12,7 +12,6 @@ bash-completion
 # --- [Hardware Support] ---
 intel-ucode
 amd-ucode
-linux-firmware-whence    
 linux-firmware-intel     # Intel GPU & Wi-Fi/BT
 linux-firmware-amdgpu    # AMD Radeon Modern GPU
 linux-firmware-radeon    # AMD Radeon Legacy GPU
@@ -23,15 +22,11 @@ linux-firmware-broadcom
 linux-firmware-mediatek
 sof-firmware
 
-# --- [Graphics & Input Drivers] ---
-mesa
-
 # --- [Desktop Environment - Minimal] ---
 plasma-desktop
 sddm
 powerdevil
 kscreen
-breeze
 breeze-gtk
 kde-gtk-config
 xdg-user-dirs
@@ -45,7 +40,6 @@ iptables-nft
 plasma-pa
 
 # --- [Audio Backend] ---
-wireplumber
 pipewire-pulse
 pipewire-jack
 
