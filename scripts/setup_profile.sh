@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eu
 
 REPO_DIR=$(pwd)
 CONFIG_DIR="$REPO_DIR/configs"
@@ -24,8 +24,8 @@ fi
 # Pacman Config (Exclude Docs/Locales)
 echo "-> Configuring pacman exclusions..."
 NO_EXTRACT_RULE="NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en*"
-sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" /etc/pacman.conf
-sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" "$BUILD_DIR/pacman.conf"
+sed -i "s|^#NoExtract.*|${NO_EXTRACT_RULE}|" /etc/pacman.conf
+sed -i "s|^#NoExtract.*|${NO_EXTRACT_RULE}|" "$BUILD_DIR/pacman.conf"
 
 # Remove "with speech" boot entries
 echo "-> Removing speech accessibility boot entries..."
