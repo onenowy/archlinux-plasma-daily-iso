@@ -30,28 +30,10 @@ sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" "$BUILD_DIR/pacman.conf"
 # Remove "with speech" boot entries
 echo "-> Removing speech accessibility boot entries..."
 rm -f "$BUILD_DIR"/efiboot/loader/entries/*speech*.conf
-if [ -f "$BUILD_DIR/grub/grub.cfg" ]; then
-    sed -i '/speakup screen reader/,/^}/d' "$BUILD_DIR/grub/grub.cfg"
-fi
 
 # Add custom boot entries (cowspace options)
 echo "-> Adding custom boot entries..."
 cp "$CONFIG_DIR"/efiboot/loader/entries/*.conf "$BUILD_DIR/efiboot/loader/entries/"
-
-# Add cowspace entries to GRUB
-if [ -f "$BUILD_DIR/grub/grub.cfg" ]; then
-    sed -i '/^menuentry "Arch Linux install medium/a\
-menuentry "Arch Linux install medium (%ARCH%, ${archiso_platform}) with 2G cowspace" --class arch --class gnu-linux --class gnu --class os --hotkey 2 {\
-    set gfxpayload=keep\
-    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux archisobasedir=%INSTALL_DIR% archisodevice=UUID=${ARCHISO_UUID} cow_spacesize=2G\
-    initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img\
-}\
-menuentry "Arch Linux install medium (%ARCH%, ${archiso_platform}) with 50% RAM cowspace" --class arch --class gnu-linux --class gnu --class os --hotkey 5 {\
-    set gfxpayload=keep\
-    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux archisobasedir=%INSTALL_DIR% archisodevice=UUID=${ARCHISO_UUID} cow_spacesize=50%\
-    initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img\
-}' "$BUILD_DIR/grub/grub.cfg"
-fi
 
 # Initramfs Optimization (Remove KMS/PXE hooks)
 echo "-> Optimizing Initramfs..."
