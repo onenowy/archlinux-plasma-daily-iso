@@ -3,11 +3,11 @@ set -e
 
 echo ">>> Managing Release..."
 
-# 1. Define Variables
+# Define Variables
 REPO="$GITHUB_REPOSITORY"   # Automatically provided by Actions
 SHA="$GITHUB_SHA"           # Automatically provided by Actions
 
-# 3. Check & Delete Previous Release
+# Check & Delete Previous Release
 if gh release view "$RELEASE_TAG" --repo "$REPO" > /dev/null 2>&1; then
     echo "-> Deleting existing '$RELEASE_TAG' release..."
     gh release delete "$RELEASE_TAG" --yes --cleanup-tag --repo "$REPO"
@@ -15,7 +15,7 @@ else
     echo "-> No existing release found. Creating a new one."
 fi
 
-# 4. Log ISO Size
+# Log ISO Size
 if [ -d "$OUT_DIR" ]; then
     cd "$OUT_DIR"
     ISO_FILE=$(ls *.iso | head -n 1)
@@ -29,7 +29,7 @@ else
     exit 1
 fi
 
-# 5. Create Release & Upload
+# Create Release & Upload
 echo "-> Creating release and uploading artifacts..."
 
 # Note: Adjust the --notes content as needed

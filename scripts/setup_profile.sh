@@ -7,12 +7,12 @@ CONFIG_DIR="$REPO_DIR/configs"
 echo ">>> Starting Custom Profile Setup..."
 echo "-> Working Target: $BUILD_DIR"
 
-# 1. Copy Base Profile (releng)
+# Copy Base Profile (releng)
 echo "-> Copying releng profile..."
 cp -r /usr/share/archiso/configs/releng "$BUILD_DIR"
 chmod -R +w "$BUILD_DIR"
 
-# 2. Apply Custom Packages
+# Apply Custom Packages
 if [ -f "$REPO_DIR/package_list.x86_64" ]; then
     echo "-> Applying custom package list..."
     sed 's/#.*//;s/[ \t]*$//;/^$/d' "$REPO_DIR/package_list.x86_64" > "$BUILD_DIR/packages.x86_64"
@@ -21,13 +21,20 @@ else
     exit 1
 fi
 
-# 3. Pacman Config (Exclude Docs/Locales)
+# Pacman Config (Exclude Docs/Locales)
 echo "-> Configuring pacman exclusions..."
 NO_EXTRACT_RULE="NoExtract  = usr/share/help/* usr/share/doc/* usr/share/man/* usr/share/locale/* usr/share/i18n/* !usr/share/locale/en*"
 sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" /etc/pacman.conf
 sed -i "/^#NoExtract/c\\$NO_EXTRACT_RULE" "$BUILD_DIR/pacman.conf"
 
-# 4. Initramfs Optimization (Remove KMS/PXE hooks)
+# Remove "with speech" boot entries
+echo "-> Removing speech accessibility boot entries..."
+rm -f "$BUILD_DIR"/efiboot/loader/entries/*speech*.conf
+if [ -f "$BUILD_DIR/grub/grub.cfg" ]; then
+    sed -i '/speakup screen reader/,/^}/d' "$BUILD_DIR/grub/grub.cfg"
+fi
+
+# Initramfs Optimization (Remove KMS/PXE hooks)
 echo "-> Optimizing Initramfs..."
 CONF_FILE="$BUILD_DIR/airootfs/etc/mkinitcpio.conf.d/archiso.conf"
 if [ -f "$CONF_FILE" ]; then
@@ -39,7 +46,7 @@ if [ -f "$CONF_FILE" ]; then
     done
 fi
 
-# 5. Network & Desktop Configuration
+# Network & Desktop Configuration
 echo "-> Configuring Network & SDDM..."
 AIROOTFS_DIR="$BUILD_DIR/airootfs"
 SYSTEMD_DIR="$AIROOTFS_DIR/etc/systemd/system"
@@ -63,7 +70,7 @@ ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkMa
 mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
 [ -f "$CONFIG_DIR/autologin.conf" ] && cp "$CONFIG_DIR/autologin.conf" "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
 
-# 6. User Setup (Sysusers, Home, Sudoers, Polkit)
+# User Setup (Sysusers, Home, Sudoers, Polkit)
 echo "-> Configuring User & Permissions..."
 mkdir -p "$AIROOTFS_DIR/usr/lib/sysusers.d"
 [ -f "$CONFIG_DIR/archiso-user.conf" ] && cp "$CONFIG_DIR/archiso-user.conf" "$AIROOTFS_DIR/usr/lib/sysusers.d/archiso-user.conf"
@@ -76,7 +83,7 @@ mkdir -p "$AIROOTFS_DIR/etc/sudoers.d"
 mkdir -p "$AIROOTFS_DIR/etc/polkit-1/rules.d"
 [ -f "$CONFIG_DIR/49-nopasswd_global.rules" ] && cp "$CONFIG_DIR/49-nopasswd_global.rules" "$AIROOTFS_DIR/etc/polkit-1/rules.d/49-nopasswd_global.rules"
 
-# 7. Apply Custom Profile Definition
+# Apply Custom Profile Definition
 echo "-> Overwriting profiledef.sh..."
 if [ -f "$CONFIG_DIR/profiledef.sh" ]; then
     cp "$CONFIG_DIR/profiledef.sh" "$BUILD_DIR/profiledef.sh"
