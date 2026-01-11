@@ -66,6 +66,7 @@ rm -f "$AIROOTFS_DIR/etc/resolv.conf"
 mkdir -p "$MULTI_USER_DIR"
 ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
+ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
 
 # Apply SDDM Autologin
 mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
