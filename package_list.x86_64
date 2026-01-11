@@ -28,6 +28,7 @@ xdg-user-dirs
 plasma-nm
 bluedevil
 iptables-nft
+firewalld
 
 # --- [Audio GUI] ---
 plasma-pa

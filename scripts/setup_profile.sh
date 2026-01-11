@@ -67,10 +67,20 @@ mkdir -p "$MULTI_USER_DIR"
 ln -sf /usr/lib/systemd/system/sddm.service "$SYSTEMD_DIR/display-manager.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$MULTI_USER_DIR/NetworkManager.service"
 ln -sf /usr/lib/systemd/system/bluetooth.service "$MULTI_USER_DIR/bluetooth.service"
+ln -sf /usr/lib/systemd/system/firewalld.service "$MULTI_USER_DIR/firewalld.service"
 
 # Apply SDDM Autologin
 mkdir -p "$AIROOTFS_DIR/etc/sddm.conf.d"
 [ -f "$CONFIG_DIR/autologin.conf" ] && cp "$CONFIG_DIR/autologin.conf" "$AIROOTFS_DIR/etc/sddm.conf.d/autologin.conf"
+
+# Firewalld Configuration
+echo "-> Configuring Firewalld..."
+if [ -d "$CONFIG_DIR/firewalld" ]; then
+    mkdir -p "$AIROOTFS_DIR/etc/firewalld"
+    cp -r "$CONFIG_DIR/firewalld/"* "$AIROOTFS_DIR/etc/firewalld/"
+    # Ensure correct permissions
+    chmod -R u=rwX,g=rX,o=rX "$AIROOTFS_DIR/etc/firewalld"
+fi
 
 # User Setup (Sysusers, Home, Sudoers, Polkit)
 echo "-> Configuring User & Permissions..."
